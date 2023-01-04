@@ -4,6 +4,10 @@ import io.netty.channel.ChannelHandlerContext
 import java.io.OutputStream
 
 class ContextOutputStream(private val ctx: ChannelHandlerContext): OutputStream() {
+    override fun toString(): String {
+        return ctx.channel().id().asLongText()
+    }
+
     override fun write(b: Int) {
         val ioBuffer = ctx.alloc().ioBuffer()
 

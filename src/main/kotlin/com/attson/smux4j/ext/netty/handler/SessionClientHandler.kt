@@ -53,7 +53,7 @@ open class SessionClientHandler(protected val mux: Mux) : ChannelInboundHandlerA
 
                 val session = this.getSession(ctx)
                 if (session.isAcceptRead()) {
-                    session.read(ByteBufInputStream(cumulation))
+                    session.onInput(ByteBufInputStream(cumulation))
                 } else {
                     ctx.channel().config().isAutoRead = false
                 }

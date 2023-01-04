@@ -1,9 +1,9 @@
 package com.attson.smux4j
 
 import com.attson.smux4j.ext.formatString
-import com.attson.smux4j.listener.StreamListener
+import com.attson.smux4j.listener.StreamHandler
 import com.attson.smux4j.mux.Mux
-import com.attson.smux4j.mux.defaultSmuxConfig
+import com.attson.smux4j.mux.defaultConfig
 import com.attson.smux4j.ext.netty.context.ChannelOutputStream
 import com.attson.smux4j.ext.netty.handler.SessionClientHandler
 import io.netty.bootstrap.Bootstrap
@@ -20,8 +20,8 @@ class ClientTests {
 
     @Test
     fun `test client`() {
-        val defaultSmuxConfig = defaultSmuxConfig()
-        val mux = Mux(defaultSmuxConfig).setStreamListener(object : StreamListener {
+        val defaultSmuxConfig = defaultConfig()
+        val mux = Mux(defaultSmuxConfig).setStreamListener(object : StreamHandler {
             override fun onReadEvent(stream: Stream, input: InputStream) {
                 val readAllBytes = input.readAllBytes()
 

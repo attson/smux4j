@@ -1,7 +1,7 @@
 package com.attson.smux4j.mux
 
 import com.attson.smux4j.Stream
-import com.attson.smux4j.listener.StreamListener
+import com.attson.smux4j.listener.StreamHandler
 import com.attson.smux4j.session.Session
 import com.attson.smux4j.session.exception.InvalidProtocolException
 import org.slf4j.Logger
@@ -44,7 +44,7 @@ class Config {
 }
 
 // DefaultConfig is used to return a default configuration
-fun defaultSmuxConfig(): Config {
+fun defaultConfig(): Config {
     val config = Config()
     config.version = 1
     config.keepAliveInterval = 10 * 1000
@@ -91,7 +91,7 @@ fun verifyConfig(config: Config) {
 class Mux(private val config: Config) {
     private val sessions: ConcurrentHashMap<String, Session> = ConcurrentHashMap()
 
-    private var streamListener: StreamListener = object : StreamListener {
+    private var streamListener: StreamHandler = object : StreamHandler {
         override fun onReadEvent(stream: Stream, input: InputStream) {
             TODO("Not yet implemented")
         }
@@ -159,13 +159,13 @@ class Mux(private val config: Config) {
         this.sessions.remove(sessionId)
     }
 
-    fun setStreamListener(streamListener: StreamListener): Mux {
+    fun setStreamListener(streamListener: StreamHandler): Mux {
         this.streamListener = streamListener
 
         return this
     }
 
-    fun streamListener(): StreamListener {
+    fun streamListener(): StreamHandler {
         return streamListener
     }
 }

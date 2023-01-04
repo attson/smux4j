@@ -39,8 +39,6 @@ class Stream(private val id: Long, private val maxFrameSize: Int, private val se
             recvBuffers.add(data)
             recvReadable += data.size
         }
-
-        this.notifyReadEvent()
     }
 
     fun shortId(): Long {
@@ -51,7 +49,7 @@ class Stream(private val id: Long, private val maxFrameSize: Int, private val se
         return "${sess.id()}-${id}"
     }
 
-    private fun notifyReadEvent() {
+    public fun notifyReadEvent() {
         if (!reading && recvReadable > 0) {
             // Ensure that only one thread is in read
 
@@ -177,7 +175,7 @@ class Stream(private val id: Long, private val maxFrameSize: Int, private val se
         this.notifyCloseEvent()
     }
 
-    fun closeByFin() {
+    fun fin() {
         if (logger.isDebugEnabled) {
             logger.debug("mux stream closed by fin: " + this.id())
         }

@@ -6,6 +6,7 @@ The Java Implementation of Smux, The [original repo](https://github.com/xtaci/sm
 
 You can use this library, to connect java and golang, if you are building a multi-language microservice cluster, it is very useful.
 
+Lightweight connection and transmission
 
 ![img.png](img.png)
 

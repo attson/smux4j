@@ -352,7 +352,7 @@ class Session(
         synchronized(writeLock) {
             val allocate = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
 
-            allocate.put(0)
+            allocate.put(frame.getVer().toByte())
             allocate.put(frame.getCmd().toByte())
             allocate.putShort(frame.getData().size.toShort())
             allocate.putInt(frame.getSid().toInt())

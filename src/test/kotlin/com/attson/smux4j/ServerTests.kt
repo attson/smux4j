@@ -24,9 +24,9 @@ class ServerTests {
             override fun onReadEvent(stream: Stream, input: InputStream) {
                 val readAllBytes = input.readAllBytes()
 
-                println(readAllBytes.formatString())
+                println(readAllBytes.formatString() + " " +readAllBytes.toString(Charsets.UTF_8))
 
-                stream.write(readAllBytes)
+                stream.write("pong".toByteArray(Charsets.UTF_8))
 
                 stream.flush()
             }

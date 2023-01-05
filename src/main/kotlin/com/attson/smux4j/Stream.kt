@@ -11,56 +11,62 @@ import java.io.IOException
 import java.io.OutputStream
 import java.util.*
 
-class Stream(private val id: Long, private val maxFrameSize: Int, private val sess: Session) : OutputStream() {
+class Stream(private val id: Long, private val frameSize: Int, private val sess: Session) : OutputStream() {
+    // id at construct property
+    // sess at construct property
+
+    private var buffers: ArrayList<ByteArray> = arrayListOf()
+    // heads   [][]byte // slice heads kept for recycle
+
+    private val bufferLock = Any()
+
+    // frameSize at construct property
 
     private val logger: Logger = LoggerFactory.getLogger(javaClass)
 
-    private var closed: Boolean = false
+    private var die: Boolean = false
 
-    /**
-     * The bytes entered are reserved in recvBuffers
-     */
-    private var recvBuffers: ArrayList<ByteArray> = arrayListOf()
 
     private var recvReadable: Int = 0
 
-    private val recvBufferLock = Any()
 
     private var reading = false
 
+    // --------------------------------- java code ---------------------------------
     init {
         if (logger.isDebugEnabled) {
             logger.debug("mux stream opened: " + this.id())
         }
     }
 
+    // --------------------------------- java code ---------------------------------
+
+    fun id(): String {
+        return "${sess.hashCode()}-${id}"
+    }
+
+    // read()
+
     fun pushBytes(data: ByteArray) {
-        synchronized(recvBufferLock) {
-            recvBuffers.add(data)
+        synchronized(bufferLock) {
+            buffers.add(data)
             recvReadable += data.size
         }
     }
 
-    fun shortId(): Long {
-        return id
-    }
 
-    fun id(): String {
-        return "${sess.id()}-${id}"
-    }
-
-    public fun notifyReadEvent() {
+    fun notifyReadEvent() {
         if (!reading && recvReadable > 0) {
             // Ensure that only one thread is in read
 
             // Single thread processing
-            sess.executor().execute {
+            sess.getConfig().getStreamIOExecutor().execute {
                 var input: ByteArraysInputStream
                 var readable: Int
                 var buffers: ArrayList<ByteArray>
 
                 // Copy the contents in recvBuffers, and use different buffers for reading and writing
-                synchronized(recvBufferLock) {
+                synchronized(bufferLock) {
                     if (reading) {
                         return@execute
                     }
@@ -68,26 +74,26 @@ class Stream(private val id: Long, private val maxFrameSize: Int, private val se
                     reading = true
 
                     // Read from buffers
-                    buffers = recvBuffers
+                    buffers = this.buffers
                     readable = recvReadable
 
-                    recvBuffers = arrayListOf()
+                    this.buffers = arrayListOf()
                     recvReadable = 0
 
                     input = ByteArraysInputStream(buffers, readable)
                 }
 
                 // The event processing part is unlocked
-                sess.streamListener().onReadEvent(this, input)
+                this.sess.getConfig().getStreamHandler().onReadEvent(this, input)
                 input.clearRead()
 
                 var needRead = false
 
-                synchronized(recvBufferLock) {
+                synchronized(bufferLock) {
                     reading = false
 
                     if (buffers.isNotEmpty()) {
-                        recvBuffers.addAll(0, buffers)
+                        this.buffers.addAll(0, buffers)
 
                         needRead = recvReadable > 0
                         recvReadable += input.available()
@@ -104,7 +110,7 @@ class Stream(private val id: Long, private val maxFrameSize: Int, private val se
     }
 
     private fun ensureOpen() {
-        if (closed) {
+        if (die) {
             throw IOException("stream ${id()} closed")
         }
     }
@@ -133,8 +139,8 @@ class Stream(private val id: Long, private val maxFrameSize: Int, private val se
 
         while (b.size - off > 0) {
             var sz = b.size - off
-            if (sz > this.maxFrameSize) {
-                sz = this.maxFrameSize
+            if (sz > this.frameSize) {
+                sz = this.frameSize
             }
 
             val byteArray = ByteArray(sz)
@@ -170,7 +176,7 @@ class Stream(private val id: Long, private val maxFrameSize: Int, private val se
 
         this.sess.writeFrame(frame)
 
-        this.closed = true
+        this.die = true
 
         this.notifyCloseEvent()
     }
@@ -180,7 +186,7 @@ class Stream(private val id: Long, private val maxFrameSize: Int, private val se
             logger.debug("mux stream closed by fin: " + this.id())
         }
 
-        this.closed = true
+        this.die = true
 
         this.notifyCloseEvent()
     }
@@ -190,15 +196,15 @@ class Stream(private val id: Long, private val maxFrameSize: Int, private val se
             logger.debug("mux stream closed by session: " + this.id())
         }
 
-        this.closed = true
+        this.die = true
 
         this.notifyCloseEvent()
     }
 
     private fun notifyCloseEvent() {
         // todo close event needs to be sent
-        this.sess.executor().execute {
-            this.sess.streamListener().onClosed(this)
+        this.sess.getConfig().getStreamIOExecutor().execute {
+            this.sess.getConfig().getStreamHandler().onClosed(this)
         }
     }
 }

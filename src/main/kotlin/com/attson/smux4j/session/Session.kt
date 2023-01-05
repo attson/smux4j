@@ -3,9 +3,8 @@ package com.attson.smux4j.session
 import com.attson.smux4j.*
 import com.attson.smux4j.ext.io.LittleEndianDataInputStream
 import com.attson.smux4j.frame.*
-import com.attson.smux4j.listener.StreamHandler
+import com.attson.smux4j.mux.StreamIOHandler
 import com.attson.smux4j.mux.Config
-import com.attson.smux4j.mux.Mux
 import com.attson.smux4j.session.exception.GoAwayException
 import com.attson.smux4j.session.exception.InvalidProtocolException
 import org.slf4j.LoggerFactory
@@ -18,20 +17,18 @@ import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-class Session(private val config: Config, private val conn: OutputStream, private val client: Boolean) {
+class Session(
+    private val config: Config,
+    private val conn: OutputStream,
+    client: Boolean
+) {
 
-    // java ext property begin
     private val logger: org.slf4j.Logger = LoggerFactory.getLogger(javaClass)
-
-    private val sessionId = conn.toString()
-
-    // java ext property end
 
     // conn at construct property
     // config at construct property
 
     private var nextStreamId: Long = 0
-
     private val nextStreamIDLock: Any = Any()
 
     private val bucket: AtomicInteger = AtomicInteger(0)
@@ -41,20 +38,34 @@ class Session(private val config: Config, private val conn: OutputStream, privat
     private val streamLock: Any = Any()
 
     private val die = AtomicBoolean(false)
+    // dieOnce sync.Once -> use atomic cas in java
 
-    private var goAway: Int = 0
+    // socketReadError      atomic.Value
+    // socketWriteError     atomic.Value
+    // chSocketReadError    chan struct{}
+    // chSocketWriteError   chan struct{}
+    // socketReadErrorOnce  sync.Once
+    // socketWriteErrorOnce sync.Once
 
+    // protoError     atomic.Value
+    // chProtoError   chan struct{}
+    // protoErrorOnce sync.Once
 
-    private var initialized = AtomicBoolean(false)
+    // chAccepts chan *Stream
 
+    private val dataReady = AtomicInteger(0) // flag data has arrived
+    private var goAway: Int = 0 // flag id exhausted
 
-    private var keepalive: ScheduledFuture<*>? = null
+    // deadline atomic.Value
 
+    // shaper chan writeRequest
+    // writes chan writeRequest
+
+    // --------------------------------- java code ---------------------------------
     private val writeLock: Any = Any()
 
-    fun getConfig(): Config {
-        return this.config
-    }
+    private var keepalive: ScheduledFuture<*>? = null
+    private var keepaliveTimeout: ScheduledFuture<*>? = null
 
     init {
         bucket.set(config.maxReceiveBuffer)
@@ -68,6 +79,29 @@ class Session(private val config: Config, private val conn: OutputStream, privat
             this.keepalive()
         }
     }
+
+    fun getConfig(): Config {
+        return this.config
+    }
+
+    fun setBucketNotify(bucketNotify: () -> Unit): Session {
+        this.bucketNotify = bucketNotify
+
+        return this
+    }
+
+    fun bucketIsAvailable(): Boolean {
+        return this.bucket.get() > 0
+    }
+
+    fun flush() {
+        if (logger.isDebugEnabled) {
+            logger.debug("session ${hashCode()} flushed")
+        }
+        conn.flush()
+    }
+
+    // --------------------------------- java code ---------------------------------
 
     fun openStream(): Stream {
         if (this.isClosed()) {
@@ -121,7 +155,7 @@ class Session(private val config: Config, private val conn: OutputStream, privat
     fun close() {
         if (this.die.compareAndSet(false, true)) {
             if (logger.isDebugEnabled) {
-                logger.debug("mux session closed " + this.id())
+                logger.debug("mux session closed " + this.hashCode())
             }
 
             synchronized(this.streamLock) {
@@ -130,10 +164,10 @@ class Session(private val config: Config, private val conn: OutputStream, privat
                 }
             }
 
-            // java code
+            // --------------------------------- java code ---------------------------------
             this.keepalive?.cancel(true)
-            mux.removeSession(this.id())
-            // java code
+            this.keepaliveTimeout?.cancel(true)
+            // --------------------------------- java code ---------------------------------
 
             conn.close()
         } else {
@@ -141,23 +175,27 @@ class Session(private val config: Config, private val conn: OutputStream, privat
         }
     }
 
-    // CloseChan
+    // CloseChan [Not yet implemented]
 
+    // notifyBucket notifies recvLoop that bucket is available
     private fun notifyBucket() {
         this.bucketNotify?.let { it() }
     }
 
-    // notifyBucket
-    // notifyReadError
-    // notifyWriteError
-    // notifyProtoError
+    // notifyBucket [Not yet implemented]
 
+    // notifyReadError [Not yet implemented]
 
+    // notifyWriteError [Not yet implemented]
 
+    // notifyProtoError [Not yet implemented]
+
+    // IsClosed does a safe check to see if we have shutdown
     fun isClosed(): Boolean {
         return this.die.get()
     }
 
+    // NumStreams returns the number of currently open streams
     fun numStreams(): Int {
         if (this.isClosed()) {
             return 0
@@ -168,9 +206,11 @@ class Session(private val config: Config, private val conn: OutputStream, privat
         }
     }
 
-    // SetDeadline
-    // LocalAddr
-    // RemoteAddr
+    // SetDeadline(t time.Time) [Not yet implemented]
+
+    // LocalAddr() net.Addr [Not yet implemented]
+
+    // RemoteAddr() net.Addr [Not yet implemented]
 
     // notify the session that a stream has closed
     fun streamClosed(sid: Long) {
@@ -190,18 +230,21 @@ class Session(private val config: Config, private val conn: OutputStream, privat
         }
     }
 
-    // recvLoop in java is onInput
-    fun onInput(input: InputStream) {
+    // recvLoop keeps on reading from underlying connection if tokens are available
+    // recvLoop in java is onInput, net server notify session to read
+    fun recv(input: InputStream) {
 
         // check that the readable size is>=headerSize and the current bucket space is enough
-        while (input.available() >= headerSize && this.bucket.get() > 0 && !this.isClosed()) {
+        while (input.available() >= headerSize && this.bucketIsAvailable() && !this.isClosed()) {
+            this.dataReady.set(1)
+
             val buf = LittleEndianDataInputStream(input)
 
             // Mark the current location. When the package is insufficient, reset to the location and keep half the package
             buf.mark(0)
 
             // Ver reserves bytes and discards them
-            var version = buf.readByte()
+            val version = buf.readByte()
             if (version != this.config.version.toByte()) {
                 throw InvalidProtocolException()
             }
@@ -224,6 +267,7 @@ class Session(private val config: Config, private val conn: OutputStream, privat
                         // die
                     }
                 }
+
                 cmdFIN -> {
                     synchronized(streamLock) {
                         val stream = this.streams[streamId]
@@ -236,6 +280,7 @@ class Session(private val config: Config, private val conn: OutputStream, privat
                         }
                     }
                 }
+
                 cmdPSH -> {
                     if (length > 0) {
                         if (buf.available() >= length) {
@@ -255,6 +300,7 @@ class Session(private val config: Config, private val conn: OutputStream, privat
                         }
                     }
                 }
+
                 cmdUPD -> {
                     if (buf.available() >= szCmdUPD) {
                         val consumed = buf.readInt().toUInt().toLong()
@@ -267,6 +313,7 @@ class Session(private val config: Config, private val conn: OutputStream, privat
                         return
                     }
                 }
+
                 else -> {
                     throw InvalidProtocolException()
                 }
@@ -276,26 +323,30 @@ class Session(private val config: Config, private val conn: OutputStream, privat
 
     private fun keepalive() {
         val frame = Frame(this.config.version.toUByte(), cmdNOP, 0)
-        this.keepalive = scheduled.scheduleAtFixedRate({
-            writeFrame(frame)
-            flush()
+        this.keepalive = this.config.getKeepAliveScheduled().scheduleAtFixedRate({
+            this.writeFrame(frame)
+            this.flush()
+
+            this.notifyBucket() // force a signal to the recvLoop
         }, config.keepAliveInterval, config.keepAliveInterval, TimeUnit.MILLISECONDS)
+
+        this.keepaliveTimeout = this.config.getKeepAliveScheduled().scheduleAtFixedRate({
+            if (!this.dataReady.compareAndSet(1, 0)) {
+                // recvLoop may block while bucket is 0, in this case,
+                // session should not be closed.
+                if (this.bucket.get() > 0) {
+                    this.close()
+                }
+            }
+        }, config.keepAliveTimeout, config.keepAliveTimeout, TimeUnit.MILLISECONDS)
     }
 
     // shaperLoop
     // sendLoop
 
-    fun id(): String {
-        return sessionId
-    }
-
-    fun isAcceptRead(): Boolean {
-        return this.bucket.get() > 0
-    }
-
     fun writeFrame(frame: Frame) {
         if (logger.isDebugEnabled) {
-            logger.debug("session ${id()} write frame $frame")
+            logger.debug("session ${hashCode()} write frame $frame")
         }
         // Because there is only one conn, but there are multiple streams. When writing, you need to lock to ensure that the IO will not conflict
         synchronized(writeLock) {
@@ -311,42 +362,5 @@ class Session(private val config: Config, private val conn: OutputStream, privat
         }
     }
 
-    fun flush() {
-        if (logger.isDebugEnabled) {
-            logger.debug("session ${id()} flushed")
-        }
-        conn.flush()
-    }
-
-    companion object {
-        val logger: org.slf4j.Logger = LoggerFactory.getLogger(Session::class.java)
-
-        val scheduled: ScheduledExecutorService = Executors.newScheduledThreadPool(10, object : ThreadFactory {
-            private val group: ThreadGroup
-
-            private val threadNumber = AtomicInteger(0)
-
-            private val namePrefix: String = "smux.session.scheduled-"
-
-            init {
-                val s = System.getSecurityManager()
-                group = if (s != null) s.threadGroup else Thread.currentThread().threadGroup
-            }
-
-            override fun newThread(r: Runnable): Thread {
-                val name = namePrefix + threadNumber.incrementAndGet()
-                logger.info("new scheduled thread $name")
-                return Thread(group, r, name)
-            }
-        })
-
-    }
-
-    fun executor(): ThreadPoolExecutor {
-        return mux.executor()
-    }
-
-    fun streamListener(): StreamHandler {
-        return mux.streamListener()
-    }
+    // writeFrameInternal todo prio [Not yet implemented]
 }

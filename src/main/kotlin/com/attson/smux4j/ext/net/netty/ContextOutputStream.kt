@@ -1,4 +1,4 @@
-package com.attson.smux4j.ext.netty.context
+package com.attson.smux4j.ext.net.netty
 
 import io.netty.channel.ChannelHandlerContext
 import java.io.OutputStream

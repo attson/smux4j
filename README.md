@@ -2,7 +2,7 @@
 
 ## Description
 
-The Java Implementation of Smux, The [original repo](https://github.com/xtaci/smux) is implemented by golang. 
+The Java Implementation of Smux, The original repo [xtaci/smux](https://github.com/xtaci/smux) is implemented by golang. 
 
 You can use this library, to connect java and golang, if you are building a multi-language microservice cluster, it is very useful.
 

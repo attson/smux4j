@@ -34,6 +34,10 @@ class ServerTests {
             override fun onClosed(stream: Stream) {
                 TODO("Not yet implemented")
             }
+
+            override fun onFin(stream: Stream) {
+                TODO("Not yet implemented")
+            }
         })
 
         val serverConfig = ServerConfig("0.0.0.0", 3001)

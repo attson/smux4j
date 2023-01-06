@@ -4,11 +4,21 @@
 
 The Java(Kotlin) Implementation of Smux, The original repo [xtaci/smux](https://github.com/xtaci/smux) is implemented by golang. 
 
-You can use this library, to connect java and golang, if you are building a multi-language microservice cluster, it is very useful.
+You can use this library, to connect Java and Golang, if you are building a multi-language microservice cluster, it is very useful.
 
-Lightweight connection and transmission
+Of course, it can also be used between Java and Java
+
+Like http2, but more lightweight
 
 ![img.png](img.png)
+
+## Support
+
+- [ ] tested v1.5.17
+- [ ] protocol v1v2
+- [ ] server
+- [ ] client
+- [ ] sliding window upd
 
 ## Benchmark
 

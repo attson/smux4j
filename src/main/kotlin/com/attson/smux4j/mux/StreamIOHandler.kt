@@ -10,4 +10,6 @@ interface StreamIOHandler {
     fun onReadEvent(stream: Stream, input: InputStream)
 
     fun onClosed(stream: Stream)
+
+    fun onFin(stream: Stream)
 }

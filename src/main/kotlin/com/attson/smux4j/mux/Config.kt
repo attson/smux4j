@@ -149,6 +149,10 @@ class Config {
                         override fun onClosed(stream: Stream) {
                             TODO("Not yet implemented")
                         }
+
+                        override fun onFin(stream: Stream) {
+                            TODO("Not yet implemented")
+                        }
                     }
                 }
             }

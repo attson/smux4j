@@ -3,7 +3,6 @@ package com.attson.smux4j.session
 import com.attson.smux4j.*
 import com.attson.smux4j.ext.io.LittleEndianDataInputStream
 import com.attson.smux4j.frame.*
-import com.attson.smux4j.mux.StreamIOHandler
 import com.attson.smux4j.mux.Config
 import com.attson.smux4j.session.exception.GoAwayException
 import com.attson.smux4j.session.exception.InvalidProtocolException
@@ -25,8 +24,8 @@ class Session(
 
     private val logger: org.slf4j.Logger = LoggerFactory.getLogger(javaClass)
 
-    // conn at construct property
-    // config at construct property
+    // -> conn at construct property
+    // -> config at construct property
 
     private var nextStreamId: Long = 0
     private val nextStreamIDLock: Any = Any()
@@ -38,28 +37,28 @@ class Session(
     private val streamLock: Any = Any()
 
     private val die = AtomicBoolean(false)
-    // dieOnce sync.Once -> use atomic cas in java
+    // -> dieOnce sync.Once -> use atomic cas in java
 
-    // socketReadError      atomic.Value
-    // socketWriteError     atomic.Value
-    // chSocketReadError    chan struct{}
-    // chSocketWriteError   chan struct{}
-    // socketReadErrorOnce  sync.Once
-    // socketWriteErrorOnce sync.Once
+    // -> socketReadError      atomic.Value
+    // -> socketWriteError     atomic.Value
+    // -> chSocketReadError    chan struct{}
+    // -> chSocketWriteError   chan struct{}
+    // -> socketReadErrorOnce  sync.Once
+    // -> socketWriteErrorOnce sync.Once
 
-    // protoError     atomic.Value
-    // chProtoError   chan struct{}
-    // protoErrorOnce sync.Once
+    // -> protoError     atomic.Value
+    // -> chProtoError   chan struct{}
+    // -> protoErrorOnce sync.Once
 
-    // chAccepts chan *Stream
+    // -> chAccepts chan *Stream
 
     private val dataReady = AtomicInteger(0) // flag data has arrived
     private var goAway: Int = 0 // flag id exhausted
 
-    // deadline atomic.Value
+    // -> deadline atomic.Value
 
-    // shaper chan writeRequest
-    // writes chan writeRequest
+    // -> shaper chan writeRequest
+    // -> writes chan writeRequest
 
     // --------------------------------- java code ---------------------------------
     private val writeLock: Any = Any()
@@ -160,7 +159,7 @@ class Session(
 
             synchronized(this.streamLock) {
                 this.streams.forEach { (t, u) ->
-                    u.closeBySession()
+                    u.sessionClose()
                 }
             }
 
@@ -206,18 +205,18 @@ class Session(
         }
     }
 
-    // SetDeadline(t time.Time) [Not yet implemented]
+    // -> SetDeadline(t time.Time) [Not yet implemented]
 
-    // LocalAddr() net.Addr [Not yet implemented]
+    // -> LocalAddr() net.Addr [Not yet implemented]
 
-    // RemoteAddr() net.Addr [Not yet implemented]
+    // -> RemoteAddr() net.Addr [Not yet implemented]
 
     // notify the session that a stream has closed
     fun streamClosed(sid: Long) {
         synchronized(this.streamLock) {
-            // return remaining tokens to the bucket
-
-            // todo
+            if (this.streams[sid]!!.recycleTokens() > 0) { // return remaining tokens to the bucket
+                this.notifyBucket()
+            }
 
             this.streams.remove(sid)
         }
@@ -275,8 +274,6 @@ class Session(
                         if (stream != null) {
                             stream.fin()
                             stream.notifyReadEvent()
-                            // todo dot need remove ?
-                            this.streams.remove(streamId)
                         }
                     }
                 }
@@ -341,8 +338,8 @@ class Session(
         }, config.keepAliveTimeout, config.keepAliveTimeout, TimeUnit.MILLISECONDS)
     }
 
-    // shaperLoop
-    // sendLoop
+    // -> shaperLoop()
+    // -> sendLoop()
 
     fun writeFrame(frame: Frame) {
         if (logger.isDebugEnabled) {
@@ -362,5 +359,5 @@ class Session(
         }
     }
 
-    // writeFrameInternal todo prio [Not yet implemented]
+    // -> writeFrameInternal todo prio [Not yet implemented]
 }
